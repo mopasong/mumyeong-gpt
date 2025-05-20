@@ -4,16 +4,19 @@ import json
 from datetime import datetime
 import matplotlib.pyplot as plt
 from collections import defaultdict
+
 from input_collector import InputCollector
 from prompt_generator import generate_prompt
+from ai_connector import call_huggingface_api
+from structure_graph import draw_structure_graph
 
 st.set_page_config(page_title="🧠 Mumyeong GPT Prototype", layout="centered")
-
 collector = InputCollector()
+
 if "log" not in st.session_state:
     st.session_state.log = []
 
-# Day 구조 생성
+# Group input by date
 def group_by_day(log):
     result = defaultdict(list)
     for entry in log:
@@ -22,7 +25,7 @@ def group_by_day(log):
         result[day_key].append(entry)
     return result
 
-# 감정 색상
+# Emotion color mapping
 def get_color_by_emotion(text):
     if any(k in text for k in ["무서워", "싫어", "두려워"]):
         return "#6c5ce7"
@@ -34,7 +37,7 @@ def get_color_by_emotion(text):
         return "#00cec9"
     return "#ffeaa7"
 
-# 점 점점 사라짐 애니메이션
+# CSS animations
 st.markdown("""
     <style>
     @keyframes fadeDots {
@@ -52,7 +55,9 @@ st.markdown("""
 
 st.title("🧠 Mumyeong GPT Prototype")
 
+# Input field
 user_input = st.text_input("💬 Say something...", key="user_input")
+huggingface_token = st.text_input("🔐 HuggingFace API Token (hf_...)", type="password")
 
 if user_input:
     entry = collector.collect(user_input)
@@ -68,23 +73,27 @@ if user_input:
     else:
         st.markdown(f"<div class='dot-anim' style='color:{color}'>● ● ●</div>", unsafe_allow_html=True)
 
-    # 반복 & 회피 감지
+    # Detection
     texts = [e["text"] for e in st.session_state.log]
     if texts.count(user_input) > 1:
         st.warning("🔁 반복된 흐름이 감지되었습니다.")
     if any(word in user_input for word in ["괜찮", "그냥", "몰라", "비슷"]):
         st.info("🌀 회피형 표현이 감지되었습니다.")
 
-    # 프롬프트 + 응답
+    # Prompt + GPT response
     prompt = generate_prompt(st.session_state.log)
     st.markdown("#### ✍️ GPT 프롬프트")
     st.code(prompt, language="markdown")
 
-    # [무료 AI 연동 구조 위치]
-    st.markdown("#### 🤖 AI 응답 (데모)")
-    st.success("...이 말은 지난 흐름과 닮았지만, 이번엔 조금 달라요.")
+    if huggingface_token.startswith("hf_"):
+        with st.spinner("🤖 AI 응답 생성 중..."):
+            ai_reply = call_huggingface_api(prompt, huggingface_token)
+        st.markdown("#### 🤖 HuggingFace AI 응답")
+        st.success(ai_reply)
+    else:
+        st.warning("❗ HuggingFace API 토큰을 입력해 주세요.")
 
-# 📊 루프 타임라인 시각화
+# 📈 Timeline visualization
 if st.session_state.log:
     st.markdown("### 📊 일자별 입력 수")
     grouped = group_by_day(st.session_state.log)
@@ -97,10 +106,15 @@ if st.session_state.log:
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
-# 🧠 Day 30 구조 발화 예시
+# 🧠 Day 30 구조 분석
 if len(set(group_by_day(st.session_state.log).keys())) >= 30:
     st.markdown("### 🧠 Day 30 구조 발화")
     st.info("너의 30일 흐름은 반복과 침묵이 주기적으로 나타나고 있어요. 그 안에 익숙함과 회피가 공존했어.")
+
+# 🕸 구조 노드 그래프 시각화
+if st.session_state.log:
+    st.markdown("### 🕸 구조 흐름 그래프")
+    draw_structure_graph(st.session_state.log)
 
 # 📥 저장
 if st.session_state.log:
